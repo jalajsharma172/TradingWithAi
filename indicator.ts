@@ -1,197 +1,302 @@
-import { preProcessFile } from "typescript";
 import type { Candlestick } from "./lighter-sdk-ts/generated";
-import { indexOfLine } from "bun";
 
-export function getEMA2(price:number[],period:number):number[] {
+/*---------------------------------------------------------
+   CORRECT EMA IMPLEMENTATION (TRADINGVIEW ACCURATE)
+---------------------------------------------------------*/
+export function getEMA(values: number[], period: number): (number | null)[] {
+  const k = 2 / (period + 1);
+  const ema: (number | null)[] = Array(values.length).fill(null);
 
-    // 1st EMA
-    const smaInterval=price.length-period;
-    if(smaInterval<1){
-        throw new Error("Not enough error provided");
-        return [];
-    }
-    const multiplier=2/(period+1);
-    let sma=0;
-    for(let i=0;i<smaInterval;i++){
-        sma+=(price[i] ?? 0);
-    }
-    sma/=smaInterval;
-    
-    const emas=[Number(sma.toFixed(3))];
-    console.log("First EMA ",emas);
-    
-    for(let i=period;i<period;i++){
-        const ema=Number(((emas[emas.length-1] ?? 0) *(1-multiplier) + (price[smaInterval + i ] ?? 0)*multiplier).toFixed(3));
-        emas.push(ema);
-    }
-    return emas;
+  if (values.length < period) return ema;
+
+  // First EMA = SMA(period)
+  const sma = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  ema[period - 1] = sma;
+
+  // EMA thereafter
+  for (let i = period; i < values.length; i++) {
+    ema[i] = values[i] * k + (ema[i - 1] as number) * (1 - k);
+  }
+
+  return ema;
 }
 
+/*---------------------------------------------------------
+   MID PRICE = (OPEN + CLOSE) / 2
+---------------------------------------------------------*/
 export function getMidPrices(candlesticks: Candlestick[]): number[] {
-    return candlesticks
-        .map(({ open, close }) => Number(((open + close) / 2).toFixed(3)));
+  return candlesticks.map(({ open, close }) =>
+    Number(((open + close) / 2).toFixed(3))
+  );
 }
-  
-// macd= ema26-ema 14
-export function getMACD(candles: number[]) {
-    const ema26 = getEMA2(candles, 26);
-    const ema12 = getEMA2(candles, 12);
-    
-    const macd =ema26.slice(-14).map((_,index)=>(ema26[index]??0) - (ema12[index]??0));
-    return macd;
+
+/*---------------------------------------------------------
+   MACD = EMA12 - EMA26 (ALIGNED BY CANDLE INDEX)
+---------------------------------------------------------*/
+export function getMACD(prices: number[], fast = 12, slow = 26, signal = 9) {
+  const emaFast = getEMA(prices, fast);
+  const emaSlow = getEMA(prices, slow);
+
+  const macdLine = emaFast.map((v, i) =>
+    v !== null && emaSlow[i] !== null ? v - emaSlow[i] : null
+  );
+
+  const validMACD = macdLine.filter(v => v !== null) as number[];
+  const signalShort = getEMA(validMACD, signal);
+
+  const signalLine = Array(prices.length).fill(null);
+  let si = 0;
+
+  for (let i = 0; i < prices.length; i++) {
+    if (macdLine[i] !== null) {
+      signalLine[i] = signalShort[si];
+      si++;
+    }
   }
 
+  const histogram = macdLine.map((m, i) =>
+    m !== null && signalLine[i] !== null ? m - signalLine[i] : null
+  );
 
+  return { macdLine, signalLine, histogram };
+}
 
-export function getSMA(candles: number[], period: number) {
-    if (candles.length < period) {
-      throw new Error("Not enough candles for SMA");
+/*---------------------------------------------------------
+   MACD + SIGNAL + HISTOGRAM (TRADINGVIEW MATCHING)
+---------------------------------------------------------*/
+export function getMACDFull(candles: number[]) {
+  const ema12 = getEMA(candles, 12);
+  const ema26 = getEMA(candles, 26);
+
+  const macd: (number | null)[] = candles.map((_, i) =>
+    ema12[i] !== null && ema26[i] !== null
+      ? (ema12[i]! - ema26[i]!)
+      : null
+  );
+
+  // Signal uses ONLY valid MACD values
+  const validMACD = macd.filter(v => v !== null) as number[];
+  const signalShort = getEMA(validMACD, 9);
+
+  const signal: (number | null)[] = Array(candles.length).fill(null);
+
+  // Stretch signal into full-length
+  let si = 0;
+  for (let i = 0; i < candles.length; i++) {
+    if (macd[i] !== null) {
+      signal[i] = signalShort[si];
+      si++;
     }
-  
-    const smaValues: number[] = [];
-    for (let i = 0; i <= candles.length - period; i++) {
-      const slice = candles.slice(i, i + period);
-      const avg = slice.reduce((a, b) => a + b, 0) / period;
-      smaValues.push(Number(avg.toFixed(2)));
-    }
-  
-    return smaValues;
   }
-  
 
-  export function getEMA(candles: number[], period: number) {
-    if (candles.length < period) {
-      throw new Error("Not enough candles to compute EMA");
+  // Histogram
+  const histogram = macd.map((m, i) =>
+    m !== null && signal[i] !== null
+      ? (m - signal[i]!)
+      : null
+  );
+
+  return { macd, signal, histogram };
+}
+
+
+/*---------------------------------------------------------
+   If MACD and Signal Line Cross EachOther Then Gives a Alert (TRADINGVIEW MATCHING)
+---------------------------------------------------------*/
+
+/*---------------------------------------------------------
+   MACD / Signal Crossover Alerts (TRADINGVIEW MATCHING)
+---------------------------------------------------------*/
+
+export function detectMACDCrossovers(macd: number[], signal: number[]) {
+  const alerts: any[] = [];
+
+  for (let i = 1; i < macd.length; i++) {
+    const prevM = macd[i - 1];
+    const prevS = signal[i - 1];
+    const currM = macd[i];
+    const currS = signal[i];
+
+    if (prevM == null || prevS == null || currM == null || currS == null) continue;
+
+    // Bullish
+    if (prevM < prevS && currM > currS) {
+      alerts.push({
+        index: i,
+        type: "bullish",
+        prev: [prevM, prevS],
+        curr: [currM, currS],
+      });
     }
-  
-    const k = 2 / (period + 1);
-  
-    // FIRST EMA = SMA of first N candles
-    let emaPrev =
-      candles.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  
-    const emaValues: number[] = [];
-    emaValues.push(Number(emaPrev.toFixed(2)));
-  
-    // Continue EMA
-    for (let i = period; i < candles.length; i++) {
-      const price = (candles[i] ?? 0);
-      const ema = price * k + emaPrev * (1 - k);
-      emaValues.push(Number(ema.toFixed(2)));
-      emaPrev = ema;
+
+    // Bearish
+    if (prevM > prevS && currM < currS) {
+      alerts.push({
+        index: i,
+        type: "bearish",
+        prev: [prevM, prevS],
+        curr: [currM, currS],
+      });
     }
-  
-    return emaValues;
   }
-  
 
-  export function getRSI(candles: number[], period = 14) {
-    if (candles.length < period + 1) {
-      throw new Error("Not enough candles for RSI");
-    }
-  
-    const deltas = candles.slice(1).map((c, i) => c - (candles[i] ?? 0));
-  
-    let gains = 0, losses = 0;
-    for (let i = 0; i < period; i++) {
-      if ((deltas[i] ?? 0) > 0) gains += (deltas[i] ?? 0);
-      else losses -= (deltas[i] ?? 0);
-    }
-  
-    gains /= period;
-    losses /= period;
-  
-    const rsiValues: number[] = [];
-    let rs = losses === 0 ? 100 : gains / losses;
-    rsiValues.push(Number((100 - 100 / (1 + rs)).toFixed(2)));
-  
-    for (let i = period; i < deltas.length; i++) {
-      const delta = (deltas[i] ?? 0);
-      gains = (gains * (period - 1) + (delta > 0 ? delta : 0)) / period;
-      losses = (losses * (period - 1) + (delta < 0 ? -delta : 0)) / period;
-  
-      rs = losses === 0 ? 100 : gains / losses;
-  
-      const rsi = 100 - 100 / (1 + rs);
-      rsiValues.push(Number(rsi.toFixed(2)));
-    }
-  
-    return rsiValues;
+  return alerts;
+}
+
+
+
+
+
+
+
+
+
+
+
+/*---------------------------------------------------------
+   MACD CROSSOVER WITH TIMESTAMPS (TRADINGVIEW ACCURATE)
+---------------------------------------------------------*/
+function getEMAWithTime(prices: { close: number; timestamp: number }[], period: number) {
+  const k = 2 / (period + 1);
+  const emaArray = [];
+  let prevEMA = prices[0].close;
+
+  for (let i = 0; i < prices.length; i++) {
+      const price = prices[i].close;
+      const timestamp = prices[i].timestamp;
+
+      const ema = i === 0 ? price : (price - prevEMA) * k + prevEMA;
+      prevEMA = ema;
+
+      emaArray.push({ value: ema, timestamp });
   }
-  
 
+  return emaArray;
+}
 
-  export function getBollingerBands(candles: number[], period = 20) {
-    if (candles.length < period) {
-      throw new Error("Not enough candles for Bollinger Bands");
-    }
-  
-    const sma = getSMA(candles, period);
-    const bands = sma.map((avg, i) => {
-      const slice = candles.slice(i, i + period);
-      const mean = avg;
-  
-      const variance =
-        slice.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / period;
-  
-      const std = Math.sqrt(variance);
-  
+function getMACDWithTime(prices: { close: number; timestamp: number }[]) {
+  const ema12 = getEMAWithTime(prices, 12);
+  const ema26 = getEMAWithTime(prices, 26);
+
+  const macd = ema12.map((e, i) => {
       return {
-        upper: Number((mean + 2 * std).toFixed(2)),
-        middle: Number(mean.toFixed(2)),
-        lower: Number((mean - 2 * std).toFixed(2)),
+          value: e.value - ema26[i].value,
+          timestamp: e.timestamp
       };
-    });
-  
-    return bands;
+  });
+
+  // Signal line (9-period EMA on MACD)
+  const signal = getEMAWithTime(
+      macd.map(x => ({ close: x.value, timestamp: x.timestamp })),
+      9
+  ).map(e => ({ value: e.value, timestamp: e.timestamp }));
+
+  // MACD Histogram
+  const histogram = macd.map((m, i) => ({
+      value: m.value - signal[i].value,
+      timestamp: m.timestamp
+  }));
+
+  return { macd, signal, histogram };
+}
+
+function formatTimestamp(timestamp: number) {
+  const date = new Date(timestamp);
+  return date.toLocaleString("en-IN", { hour12: false });
+}
+
+export function detectMACDCrossovers2(klines: any[]) {
+  // Convert raw candlesticks to simplified array with close + timestamp
+  const prices = klines.map(c => ({
+      close: c.close,
+      timestamp: c.timestamp
+  }));
+
+  const { macd, signal } = getMACDWithTime(prices);
+
+  for (let i = 1; i < macd.length; i++) {
+      const prevMACD = macd[i - 1].value;
+      const prevSignal = signal[i - 1].value;
+
+      const currMACD = macd[i].value;
+      const currSignal = signal[i].value;
+      const ts = macd[i].timestamp;
+
+      // Bullish crossover
+      if (prevMACD <= prevSignal && currMACD > currSignal) {
+          console.log(`📈 BULLISH CROSSOVER at ${formatTimestamp(ts)}`);
+      }
+
+      // Bearish crossover
+      if (prevMACD >= prevSignal && currMACD < currSignal) {
+          console.log(`📉 BEARISH CROSSOVER at ${formatTimestamp(ts)}`);
+      }
   }
-  
-  
-  
-  // ================================
-  // ATR (Average True Range)
-  // ================================
-//   export function getATR(
-//     high: number[],
-//     low: number[],
-//     close: number[],
-//     period = 14
-//   ) {
-//     const tr: number[] = [];
-  
-//     for (let i = 1; i < high.length; i++) {
-//       const v1 = (high[i] ?? 0) - (low[i] ?? 0);
-//       const v2 = Math.abs(high[i] - close[i - 1]);
-//       const v3 = Math.abs(low[i] - close[i - 1]);
-  
-//       tr.push(Math.max(v1, v2, v3));
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// import { preProcessFile } from "typescript";
+// import type { Candlestick } from "./lighter-sdk-ts/generated";
+// import { indexOfLine } from "bun";
+
+// export function getEMA(price:number[],period:number):number[] {
+
+//     // 1st EMA
+//     const smaInterval=price.length-period;
+//     if(smaInterval<1){
+//         throw new Error("Not enough error provided");
+//         return [];
 //     }
-  
-//     return getEMA(tr, period);
-//   }
-  
-  
-  
-  // ================================
-  // SuperTrend
-  // ================================
-//   export function getSuperTrend(
-//     high: number[],
-//     low: number[],
-//     close: number[],
-//     period = 10,
-//     multiplier = 3
-//   ) {
-//     const atr = getATR(high, low, close, period);
-//     const st: number[] = [];
-  
-//     for (let i = 0; i < atr.length; i++) {
-//       const mid = (high[i + period] + low[i + period]) / 2;
-//       const upper = mid + atr[i] * multiplier;
-//       const lower = mid - atr[i] * multiplier;
-//       st.push(Number(lower.toFixed(2))); // Basic trend line
+//     const multiplier=2/(period+1);
+//     let sma=0;
+//     for(let i=0;i<smaInterval;i++){
+//         sma+=(price[i] ?? 0);
 //     }
+//     sma/=smaInterval;
+    
+//     const emas=[Number(sma.toFixed(3))];
+//     // console.log("First EMA ",emas);
+    
+//     for(let i=period;i<price.length;i++){
+//         const ema=Number(((emas[emas.length-1] ?? 0) *(1-multiplier) + (price[smaInterval + i ] ?? 0)*multiplier).toFixed(3));
+//         emas.push(ema);
+//     }
+//     return emas;
+// }
+
+
+// export function getMidPrices(candlesticks: Candlestick[]): number[] {
+//     return candlesticks
+//         .map(({ open, close }) => Number(((open + close) / 2).toFixed(3)));
+// }
   
-//     return st;
+// export function getMACD(candles: number[]) {
+//     const ema26 = getEMA(candles, 26);
+//     const ema12 = getEMA(candles, 12);
+    
+//     const macd =ema26.slice(-14).map((_,index)=>(ema26[index]??0) - (ema12[index]??0));
+//     return macd;
 //   }
-  
+
+
