@@ -6,6 +6,8 @@ import { MARKETS } from './markets';
 import type { TradeSignal } from './trading';
 import { PROMPT } from './prompt';
 
+
+
 // Configuration
 const GOOGLE_API_KEY = process.env['GOOGLE_API_KEY'] || 'YOUR_GOOGLE_API_KEY_HERE';
 const ACCOUNT_INDEX = parseInt(process.env['ACCOUNT_INDEX'] || '0');
