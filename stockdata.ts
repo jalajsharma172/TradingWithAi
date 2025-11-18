@@ -10,23 +10,22 @@ const klinesApi = new CandlestickApi({
     authMethods: {}
 });
 
-async function getIndicators(duration:"5m" | "4h",marketId:number): Promise<{midprices:number[],macd:number[],ema20s:number[]}> {
+export async function getIndicators(duration:"5m" | "4h",marketId:number): Promise<{midPrices:number[],macd:number[],ema20s:number[]}> {
     const klines = await klinesApi.candlesticks(marketId, duration, Date.now() - 1000 * 60 * 60 * (duration=='5m'? 2 : 96 ), Date.now(), 50, false);
-    const midprices =await getMidPrices(klines.candlesticks);
-    const ema20=await getEMA(midprices,20);
-    const macd= await getMidPrices(klines.candlesticks);
+    const midprices = await getMidPrices(klines.candlesticks);
+    const ema20 = await getEMA(midprices, 20);
+    const macdData = getMACDFull(midprices);
+    // Extract MACD line values, filter nulls and get last 10
+    const macd = macdData.macd.filter((v): v is number => v !== null).slice(-10);
+    // Filter nulls from EMA20 and get last 10
+    const ema20Filtered = ema20.filter((v): v is number => v !== null).slice(-10);
     return {
-        midprices:midprices.slice(-10),
-        macd:macd.slice(-10),
-        ema20s:ema20.slice(-10)
+        midPrices: midprices.slice(-10),
+        macd: macd,
+        ema20s: ema20Filtered
     }    
 }
 
-async function getKlines(marketId: number) {
-    getIndicators("4h",marketId);
-    getIndicators("5m",marketId);
-}
-
-getKlines(SOL_MARKET_ID);
+// Removed test code - function is now exported for use in index.ts
 
 
