@@ -23,7 +23,7 @@ export async function executeTrade(
     throw new Error('API_KEY_PRIVATE_KEY is required for trading');
   }
 
-  console.log(`\n🔄 Executing ${signal} trade for market ${marketId} at price ${currentPrice}...`);
+  console.log(`\n🔄 Executing ${signal} trade for market ${(marketId==2)?'SOL':'ETH'} at price ${currentPrice}...`);
 
   try {
     const client = await SignerClient.create({

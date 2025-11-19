@@ -33,7 +33,7 @@ export async function getOpenPositions(ACCOUNT_INDEX:number) {
             const pos = accountPosition.position;
             // Check if position is not zero - convert to number and check
             const posNum = typeof pos === 'string' ? parseFloat(pos) : Number(pos);
-            return !isNaN(posNum) && posNum !== 0;
+            return !isNaN(posNum) && posNum > 0;
         })
         .map((accountPosition) => ({
             symbol: accountPosition.symbol,

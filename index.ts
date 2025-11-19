@@ -2,7 +2,7 @@ import { getOpenPositions } from './openPositions';
 import { GoogleGenAI } from "@google/genai";
 import { getIndicators } from './stockdata';
 import { MARKETS } from './markets';
-// import { executeTrade } from './trading';
+import { executeTrade } from './trading';
 import type { TradeSignal } from './trading';
 import { PROMPT } from './prompt';
 
@@ -89,7 +89,7 @@ async function invokeAgent() {
 
   console.log('🤖 Requesting AI trading decision...');
   console.log('\n--- Enriched Prompt ---');
-  console.log(enrichedPrompt);
+  // console.log(enrichedPrompt);
   console.log('--- End Prompt ---\n');
   
   try {
@@ -108,6 +108,7 @@ async function invokeAgent() {
     
     // Parse trading signals from response
     const signals = parseTradingSignals(responseText, validIndicators);
+    console.log(signals);
     
     // Execute trades
     if (signals.length > 0) {
@@ -139,12 +140,16 @@ async function invokeAgent() {
           console.error(`❌ No price data available for ${signal.market}`);
           continue;
         }
+        // console.log();
         
-        // try {
-        //   await executeTrade(ACCOUNT_INDEX, market.marketId, signal.action, currentPrice, BASE_AMOUNT);
-        // } catch (error) {
-        //   console.error(`❌ Failed to execute trade for ${signal.market}:`, error);
-        // }
+        
+        try {
+          await executeTrade(ACCOUNT_INDEX, market.marketId, signal.action, currentPrice, BASE_AMOUNT);
+          console.log(" Buyed a Stock");
+          
+        } catch (error) {
+          console.error(`❌ Failed to execute trade for ${signal.market}:`, error);
+        }
       }
     } else {
       console.log('⚠️  No trading signals detected in AI response');
@@ -163,7 +168,7 @@ function parseTradingSignals(responseText: string, indicators: Array<{marketSlug
   // Parse MARKET:, ACTION:, and QUANTITY: lines
   const lines = responseText.split('\n');
   let currentMarket: string | null = null;
-  let currentAction: 'LONG' | 'SHORT' | 'HOLD' | null = null;
+  let currentAction: 'LONG' | 'SHORT' | 'HOLD' | 'CLOSE' | null = null;
   let currentQuantity: number | undefined = undefined;
   
   for (let i = 0; i < lines.length; i++) {
@@ -189,13 +194,11 @@ function parseTradingSignals(responseText: string, indicators: Array<{marketSlug
       currentQuantity = undefined;
       continue;
     }
-    
-    // Match ACTION: pattern (including CLOSE)
+     
     const actionMatch = line.match(/ACTION:\s*(LONG|SHORT|HOLD|CLOSE)/i);
     if (actionMatch && actionMatch[1] && currentMarket) {
-      const action = actionMatch[1].toUpperCase();
-      // Treat CLOSE as HOLD for now (or implement close logic separately)
-      currentAction = (action === 'CLOSE' ? 'HOLD' : action) as 'LONG' | 'SHORT' | 'HOLD';
+      const action = actionMatch[1].toUpperCase(); 
+      currentAction =action as  'CLOSE' | 'LONG' | 'SHORT' | 'HOLD';
       continue;
     }
     
