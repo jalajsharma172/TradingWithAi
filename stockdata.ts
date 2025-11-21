@@ -1,6 +1,6 @@
 import { CandlestickApi, IsomorphicFetchHttpLibrary, ServerConfiguration } from "./lighter-sdk-ts/generated";
 import { getEMA, getMACD, getMidPrices ,getMACDFull ,detectMACDCrossovers , detectMACDCrossovers2} from "./indicator";
-const BASE_URL = "https://mainnet.zklighter.elliot.ai"
+const BASE_URL = "https://testnet.zklighter.elliot.ai"
 const SOL_MARKET_ID = 2
 
 const klinesApi = new CandlestickApi({
@@ -9,6 +9,14 @@ const klinesApi = new CandlestickApi({
     middleware: [],
     authMethods: {}
 });
+
+
+export async function getLatestPrice(duration:"1m",marketId:number){
+    const klines = await klinesApi.candlesticks(marketId, duration, Date.now() - 1000 * 60 * 60 * .5 , Date.now(), 50, false);
+    
+    return klines.candlesticks[klines.candlesticks.length-1];
+}
+
 
 export async function getIndicators(duration:"5m" | "4h",marketId:number): Promise<{midPrices:number[],macd:number[],ema20s:number[]}> {
     const klines = await klinesApi.candlesticks(marketId, duration, Date.now() - 1000 * 60 * 60 * (duration=='5m'? 2 : 96 ), Date.now(), 50, false);

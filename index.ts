@@ -89,7 +89,7 @@ async function invokeAgent() {
 
   console.log('🤖 Requesting AI trading decision...');
   console.log('\n--- Enriched Prompt ---');
-  // console.log(enrichedPrompt);
+  console.log(enrichedPrompt);
   console.log('--- End Prompt ---\n');
   
   try {
@@ -99,6 +99,7 @@ async function invokeAgent() {
     });
     
     const responseText = response.text || '';
+    // const responseText="MARKET: SOL \n ACTIONexecuteTrade: CLOSE  \n QUANTITY: 1.550  \n  REASON: The market data indicates a significant shift in momentum against the current SHORT position. On the 5m timeframe, the MACD is negative but consistently rising, suggesting fading bearish momentum. The price is also just above the EMA20. On the 4h timeframe, the price is clearly above the EMA20, and the MACD is strongly rising from a more negative value, signaling a strong shift away from bearishness and towards bullish momentum. Both timeframes show consistent signs of an impending bullish reversal or at least a strong weakening of any bearish trend. Closing the existing profitable SHORT position is a prudent risk management decision to lock in gains and prevent potential losses from a confirmed reversal. While bullish momentum is building, the MACD has not yet crossed above zero on either timeframe, so opening a new LONG position is premature. We will hold after closing and await stronger confirmation for a new entry.";
     
     console.log('\n' + '='.repeat(80));
     console.log('🤖 AI TRADING DECISION');
@@ -144,9 +145,16 @@ async function invokeAgent() {
         
         
         try {
-          await executeTrade(ACCOUNT_INDEX, market.marketId, signal.action, currentPrice, BASE_AMOUNT);
-          console.log(" Buyed a Stock");
+
+        if (signal.action === 'CLOSE') {
+          console.log(`⏸️  CLOSE signal for ${signal.market} - no trade executed`);
           
+          continue;
+        }
+
+          console.log(" Let's buy a Stock");
+          await executeTrade(ACCOUNT_INDEX, market.marketId, signal.action, currentPrice, BASE_AMOUNT);
+         
         } catch (error) {
           console.error(`❌ Failed to execute trade for ${signal.market}:`, error);
         }

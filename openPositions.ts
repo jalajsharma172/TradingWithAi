@@ -11,7 +11,7 @@ const API_KEY_PRIVATE_KEY = process.env['API_KEY_PRIVATE_KEY']
 export async function getOpenPositions(ACCOUNT_INDEX:number) {
     if(!API_KEY_PRIVATE_KEY)return;
     const accountApi = new AccountApi({
-        baseServer: new ServerConfiguration<{  }>(BASE_URL, {  }),
+        baseServer: new ServerConfiguration<{  }>(BASE_URL, {  }),  
         httpApi: new IsomorphicFetchHttpLibrary(),
         middleware: [],
         authMethods: {
@@ -24,7 +24,7 @@ export async function getOpenPositions(ACCOUNT_INDEX:number) {
         ACCOUNT_INDEX.toString()
     );
 
-    console.log(currentOpenOrders.data.accounts[0]?.positions);
+    // console.log(currentOpenOrders.data.accounts[0]?.positions);
     const allPositions = currentOpenOrders.data.accounts[0]?.positions || [];
     
     // Filter out positions where position value is zero (no actual trade)
